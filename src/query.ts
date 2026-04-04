@@ -656,6 +656,19 @@ async function* queryLoop(
         try {
           let streamingFallbackOccured = false
           queryCheckpoint('query_api_streaming_start')
+
+          // Log request before sending to API
+          const requestPayload = {
+            messages: prependUserContext(messagesForQuery, userContext),
+            systemPrompt: fullSystemPrompt,
+            thinkingConfig: toolUseContext.options.thinkingConfig,
+            tools: toolUseContext.options.tools,
+            model: currentModel,
+            querySource,
+            queryTracking,
+          }
+          logForDebugging(`API Request: ${JSON.stringify(requestPayload, null, 2)}`, { level: 'debug' })
+
           for await (const message of deps.callModel({
             messages: prependUserContext(messagesForQuery, userContext),
             systemPrompt: fullSystemPrompt,
@@ -787,6 +800,8 @@ async function* queryLoop(
                 } as typeof message
               }
             }
+            // Log response after processing
+            logForDebugging(`API Response: ${JSON.stringify(message, null, 2)}`, { level: 'debug' })
             // Withhold recoverable errors (prompt-too-long, max-output-tokens)
             // until we know whether recovery (collapse drain / reactive
             // compact / truncation retry) can succeed. Still pushed to

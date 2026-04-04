@@ -13,7 +13,7 @@ This is a **reverse-engineered / decompiled** version of Anthropic's official Cl
 bun install
 
 # Dev mode (runs cli.tsx with MACRO defines injected via -d flags)
-bun run dev
+bun run dev --debug --debug-file=D:\project\claude-code\learn-local\logs\debug.log
 
 # Dev mode with debugger (set BUN_INSPECT=9229 to pick port)
 bun run dev:inspect
