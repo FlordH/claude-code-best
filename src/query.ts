@@ -42,7 +42,7 @@ import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   isPromptTooLongMessage,
 } from './services/api/errors.js'
-import { logAntError, logForDebugging } from './utils/debug.js'
+import { logAntError, logForDebugging, logForAPIDebug } from './utils/debug.js'
 import {
   createUserMessage,
   createUserInterruptionMessage,
@@ -667,7 +667,7 @@ async function* queryLoop(
             querySource,
             queryTracking,
           }
-          logForDebugging(`API Request: ${JSON.stringify(requestPayload, null, 2)}`, { level: 'debug' })
+          logForAPIDebug(`API Request: ${JSON.stringify(requestPayload, null, 2)}`, { level: 'debug' })
 
           for await (const message of deps.callModel({
             messages: prependUserContext(messagesForQuery, userContext),
@@ -801,7 +801,7 @@ async function* queryLoop(
               }
             }
             // Log response after processing
-            logForDebugging(`API Response: ${JSON.stringify(message, null, 2)}`, { level: 'debug' })
+            logForAPIDebug(`API Response: ${JSON.stringify(message, null, 2)}`, { level: 'debug' })
             // Withhold recoverable errors (prompt-too-long, max-output-tokens)
             // until we know whether recovery (collapse drain / reactive
             // compact / truncation retry) can succeed. Still pushed to

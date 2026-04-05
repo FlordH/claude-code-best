@@ -101,6 +101,19 @@ export const getDebugFilePath = memoize((): string | null => {
   return null
 })
 
+export const getAPIDebugFilePath = memoize((): string | null => {
+  for (let i = 0; i < process.argv.length; i++) {
+    const arg = process.argv[i]!
+    if (arg.startsWith('--api-debug-file=')) {
+      return arg.substring('--api-debug-file='.length)
+    }
+    if (arg === '--api-debug-file' && i + 1 < process.argv.length) {
+      return process.argv[i + 1]!
+    }
+  }
+  return null
+})
+
 function shouldLogDebugMessage(message: string): boolean {
   if (process.env.NODE_ENV === 'test' && !isDebugToStdErr()) {
     return false
@@ -134,6 +147,10 @@ export function getHasFormattedOutput(): boolean {
 
 let debugWriter: BufferedWriter | null = null
 let pendingWrite: Promise<void> = Promise.resolve()
+
+// API debug writer - separates API Request/Response logs from general debug logs
+let apiDebugWriter: BufferedWriter | null = null
+let apiPendingWrite: Promise<void> = Promise.resolve()
 
 // Module-level so .bind captures only its explicit args, not the
 // writeFn closure's parent scope (Jarred, #22257).
@@ -195,9 +212,57 @@ function getDebugWriter(): BufferedWriter {
   return debugWriter
 }
 
+/**
+ * Get the BufferedWriter for API debug logs.
+ * Similar to getDebugWriter but writes to a separate file.
+ */
+function getAPIDebugWriter(): BufferedWriter {
+  if (!apiDebugWriter) {
+    let ensuredDir: string | null = null
+    apiDebugWriter = createBufferedWriter({
+      writeFn: content => {
+        const path = getAPIDebugPath()
+        const dir = dirname(path)
+        const needMkdir = ensuredDir !== dir
+        ensuredDir = dir
+        if (isDebugMode()) {
+          if (needMkdir) {
+            try {
+              getFsImplementation().mkdirSync(dir, { recursive: true })
+            } catch {
+              // Directory already exists
+            }
+          }
+          getFsImplementation().appendFileSync(path, content)
+          return
+        }
+        apiPendingWrite = apiPendingWrite
+          .then(appendAsync.bind(null, needMkdir, dir, path, content))
+          .catch(noop)
+      },
+      flushIntervalMs: 1000,
+      maxBufferSize: 100,
+      immediateMode: isDebugMode(),
+    })
+    registerCleanup(async () => {
+      apiDebugWriter?.dispose()
+      await apiPendingWrite
+    })
+  }
+  return apiDebugWriter
+}
+
 export async function flushDebugLogs(): Promise<void> {
   debugWriter?.flush()
   await pendingWrite
+}
+
+/**
+ * Flush any pending API debug logs to disk.
+ */
+export async function flushAPIDebugLogs(): Promise<void> {
+  apiDebugWriter?.flush()
+  await apiPendingWrite
 }
 
 export function logForDebugging(
@@ -227,11 +292,46 @@ export function logForDebugging(
   getDebugWriter().write(output)
 }
 
+/**
+ * Log messages specifically for API Request/Response debugging.
+ * These logs go to a separate file to avoid cluttering general debug logs.
+ */
+export function logForAPIDebug(
+  message: string,
+  { level }: { level: DebugLogLevel } = { level: 'debug' },
+): void {
+  if (LEVEL_ORDER[level] < LEVEL_ORDER[getMinDebugLogLevel()]) {
+    return
+  }
+  if (!shouldLogDebugMessage(message)) {
+    return
+  }
+
+  if (hasFormattedOutput && message.includes('\n')) {
+    message = jsonStringify(message)
+  }
+  const timestamp = new Date().toISOString()
+  const output = `${timestamp} [${level.toUpperCase()}] ${message.trim()}\n`
+
+  getAPIDebugWriter().write(output)
+}
+
 export function getDebugLogPath(): string {
   return (
     getDebugFilePath() ??
     process.env.CLAUDE_CODE_DEBUG_LOGS_DIR ??
     join(getClaudeConfigHomeDir(), 'debug', `${getSessionId()}.txt`)
+  )
+}
+
+/**
+ * Get the path for API debug logs (Request/Response logs).
+ * These are kept separate from general debug logs to avoid clutter.
+ */
+export function getAPIDebugPath(): string {
+  return (
+    getAPIDebugFilePath() ??
+    join(getClaudeConfigHomeDir(), 'debug', 'api', `${getSessionId()}.txt`)
   )
 }
 
