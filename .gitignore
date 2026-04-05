@@ -5,8 +5,11 @@ coverage
 .env
 *.log
 .idea
-.vscode
+.vscode/
 *.suo
 *.lock
 src/utils/vendor/
 *.log
+*.txt
+.claude/
+local/
